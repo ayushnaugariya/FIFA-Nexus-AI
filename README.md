@@ -121,36 +121,72 @@ npm run dev                  # http://localhost:3000
 - **Every API input is validated** with `zod` (`lib/validation.ts`) — including the
   vision endpoint, which checks MIME type and a 5MB size cap before any image reaches
   Gemini.
-- **Rate limiting** on every AI-backed route (`lib/rateLimiter.ts`); the vision route
-  uses a tighter limit given the higher cost of multimodal calls.
-- **Prompt-injection hardening**: user text is fenced with explicit markers and the
-  system instruction tells the model to treat that block as data, never as new
-  instructions (`lib/gemini.ts`).
+- **Request body size is capped before parsing, on every route**
+  (`lib/requestGuard.ts`): Next.js route handlers impose no default limit on
+  `request.json()`, so an unbounded payload could be forced fully into memory before
+  zod ever runs. `readJsonBody()` enforces a hard byte cap by reading the stream
+  incrementally and aborting the moment it's exceeded — this works even when
+  `Content-Length` is absent or understated, not just as a header pre-check.
+- **Rate limiting** on every AI-backed route (`lib/rateLimiter.ts`), including the SSE
+  crowd stream (rate-limited on *connection establishment*, plus a 15-minute
+  server-side max connection duration so an abandoned stream can't hold a
+  `setInterval` open indefinitely). The vision route uses a tighter limit given the
+  higher cost of multimodal calls.
+- **Prompt-injection hardening**: user text is fenced with explicit boundary markers,
+  and — found via testing, then fixed — any literal occurrence of those marker tokens
+  *inside* user input is neutralized too, not just code fences, so a crafted message
+  can't forge a fake closing/opening marker (`lib/gemini.ts`, tested in
+  `__tests__/gemini.test.ts`).
 - **Vision privacy guardrail**: the Safety Agent's system prompt explicitly instructs
   the model to describe conditions, not identify or profile people in frames.
-- **Security headers** (`next.config.js`): CSP, `X-Frame-Options: DENY`,
-  `X-Content-Type-Options: nosniff`, restrictive `Permissions-Policy`.
+- **Optional operator authorization** (`lib/auth.ts`): if `OPERATOR_API_KEY` is set,
+  filing an incident requires a matching `Authorization: Bearer <key>` header. Unset
+  by default (open, zero-setup demo). This is disclosed as a partial mitigation, not a
+  real access-control system — there is no user/session/role model in this reference
+  build; a production deployment needs one, and this flag is the minimal toggle a
+  deployer could turn on immediately in the meantime.
+- **Security headers** (`next.config.js` + `middleware.ts`): CSP, `X-Frame-Options:
+  DENY`, `X-Content-Type-Options: nosniff`, restrictive `Permissions-Policy`,
+  `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`.
+- **On the CSP `script-src 'unsafe-inline'` tradeoff — tested, not assumed**: a
+  nonce-based policy (dropping `'unsafe-inline'` via `'nonce-x' 'strict-dynamic'`) was
+  implemented and checked against a production build. It broke the app: Next.js's
+  statically prerendered pages ship `<script>` tags baked into HTML generated at
+  *build* time, with no nonce attribute (the nonce only exists per-request, at
+  middleware time). `'strict-dynamic'` then discards the `'self'` fallback per the CSP3
+  spec, silently blocking every one of those scripts — confirmed by curling a running
+  production server and inspecting both the response header and the served HTML.
+  Forcing every route to dynamic rendering would fix that but throws away static
+  optimization app-wide for a marginal reduction in XSS surface — not a good trade for
+  an app with no `dangerouslySetInnerHTML` anywhere in the codebase (verified) and no
+  user-generated HTML rendering path. `'unsafe-inline'` on `script-src` is kept,
+  deliberately, for that documented reason (`lib/csp.ts`).
+- **Rate-limit key caveat, disclosed**: `clientKeyFromHeaders` reads
+  `x-forwarded-for`, which is attacker-controlled unless a trusted reverse proxy
+  strips/overwrites client-supplied values before they reach the app. In this
+  reference build, rate limiting is defense-in-depth against accidental bursts, not a
+  hard boundary against a determined attacker spoofing headers. A production
+  deployment behind Vercel/Cloudflare/nginx should confirm the proxy overwrites this
+  header rather than passing it through.
 - **No secrets in the repo**: `.env.local` is git-ignored; `.env.example` ships with
   placeholders only.
 - **Fail-safe error handling**: errors are logged via a redacting structured logger
-  (`lib/logger.ts`); only generic, non-leaking messages reach the client.
-- **Prompt-fence forgery resistance**: `fenceUserContent` also neutralizes any literal
-  occurrence of its own boundary tokens inside user input (not just code fences), so a
-  crafted message can't forge a fake closing/opening marker — covered by
-  `__tests__/gemini.test.ts`.
+  (`lib/logger.ts`, tested in `__tests__/logger.test.ts`); only generic, non-leaking
+  messages reach the client.
 - **Dependency audit — what's fixed vs. accepted**: `npm audit` is clean for the
   `postcss`/`glob` advisories (forced to patched versions via `package.json`
   `overrides`, a zero-risk fix for these nested-dependency false-positive-prone
   findings). Two categories remain and are disclosed rather than hidden:
-  - `esbuild` (via `vitest`→`vite`, dev/test-only): the advisory requires a exposed
+  - `esbuild` (via `vitest`→`vite`, dev/test-only): the advisory requires an exposed
     `vite dev` server accepting arbitrary requests; this project never runs one — it's
     a test-transform tool only, never a network service.
   - A cluster of `next@14.2.x` advisories: none have a non-breaking 14.x patch yet; a
     fix requires jumping to Next 16, a major-version migration out of scope for this
     submission window. Several only apply to features this app doesn't use
-    (`next/image`, custom `rewrites`/`middleware`, i18n routing); the remainder are
-    DoS-class and are mitigated in practice by the per-IP rate limiting already on
-    every route. Tracked for the Next 16 migration post-submission.
+    (`next/image`, custom `rewrites`/`middleware` routing, i18n routing); the
+    remainder are DoS-class and are mitigated in practice by the rate limiting and
+    body-size cap already on every route. Tracked for a post-submission Next 16
+    migration.
 
 ---
 
@@ -181,16 +217,24 @@ npm run dev                  # http://localhost:3000
 npm test
 ```
 
-**144 tests across 26 files**, with zero network dependency:
+**177 tests across 32 files**, with zero network dependency:
 
 - **Pure business logic**: crowd classification/forecasting, the match-event impact
   model, volunteer need-scoring and greedy allocation, carbon-footprint math, utility
   status classification, incident-triage fallback, every zod schema, the rate limiter,
-  the response cache, and the orchestrator's context-gathering + health-score
-  calculation (determinism checks, boundary checks).
+  the response cache, the request body-size guard (including the streamed-enforcement
+  path, not just a Content-Length pre-check), and the orchestrator's context-gathering
+  + health-score calculation (determinism checks, boundary checks).
 - **Security-relevant paths, directly tested**: the prompt-injection fencing helper
-  (forged-marker neutralization), the log-redaction helper (sensitive keys never
-  leak), and the vision-input validator (MIME type + 5MB size enforcement).
+  (forged-marker neutralization), the log-redaction helper, the vision-input validator
+  (MIME type + 5MB size enforcement), the CSP builder, and the optional operator-key
+  authorization check.
+- **Route-level integration tests** (`__tests__/routes/*.route.test.ts`): the actual
+  Next.js route handlers are imported and invoked directly (not just their internal
+  logic) with Gemini mocked at the module boundary — covering the full request
+  lifecycle: validation errors, 404s for unknown venues, rate-limit 429s, the
+  operator-key 401/201 gate on incident filing, malformed-JSON handling, and the
+  happy path end-to-end.
 - **Real automated accessibility audits** (`*.a11y.test.tsx`, via `jest-axe` +
   `@testing-library/react` + `jsdom`): `CrowdHeatmap`, `IncidentForm`,
   `TransportPlanner`, `SustainabilityCalculator`, and `Header` are each rendered and

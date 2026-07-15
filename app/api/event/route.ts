@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readJsonBody, PayloadTooLargeError } from '@/lib/requestGuard';
 import { getStadiumById } from '@/lib/stadiumData';
 import { generateCrowdSnapshot } from '@/lib/crowdSim';
 import { simulateMatchEvent } from '@/lib/eventSimulator';
@@ -19,8 +20,11 @@ export async function POST(request: NextRequest) {
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonBody(request);
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      return NextResponse.json({ error: error.message }, { status: 413 });
+    }
     return NextResponse.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
   }
 

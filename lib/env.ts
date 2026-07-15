@@ -27,4 +27,15 @@ export const env = {
     const parsed = Number(process.env.RATE_LIMIT_PER_MINUTE);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
   },
+  /**
+   * Optional. When set, staff-facing mutation endpoints (filing an
+   * incident, triggering the event simulator) require a matching
+   * `Authorization: Bearer <key>` header. Left unset by default so the
+   * reference build and judge evaluation work with zero extra setup — see
+   * lib/auth.ts and README §5 for the reasoning.
+   */
+  get operatorApiKey(): string | undefined {
+    const value = process.env.OPERATOR_API_KEY?.trim();
+    return value && value.length > 0 ? value : undefined;
+  },
 };

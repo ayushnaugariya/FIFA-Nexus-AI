@@ -51,7 +51,7 @@ codebase without reading every line first.
 | `/api/concierge` | POST | `fanAgent.answerFanQuestion` |
 | `/api/copilot` | POST | `orchestrator.gatherStadiumContext` + `synthesizeSituationReport` |
 | `/api/crowd/stream` | GET (SSE) | `crowdAgent.getCrowdAgentState`, pushed every 5s via `ReadableStream` |
-| `/api/incidents` | GET/POST | `safetyAgent.fileIncidentReport` / `getActiveIncidents` |
+| `/api/incidents` | GET/POST | `safetyAgent.fileIncidentReport` / `getActiveIncidents` (POST gated by optional `OPERATOR_API_KEY`, see `lib/auth.ts`) |
 | `/api/vision` | POST | `safetyAgent.inspectCameraFrame` → `lib/vision.ts` |
 | `/api/event` | POST | `lib/eventSimulator.ts` + Gemini announcement |
 | `/api/transport` | POST | `transportAgent.recommendTransport` |
@@ -92,13 +92,16 @@ typed JSON response, generic error message on failure (never leaks internals).
 | **`@testing-library/react`** | Rendering components in isolation |
 | **`jest-axe`** | Automated WCAG violation scanning (`toHaveNoViolations`) |
 
-144 tests / 26 files. See README §7 for the full breakdown.
+177 tests / 32 files, including route-level integration tests with Gemini mocked at
+the module boundary. See README §7 for the full breakdown.
 
 ## Security & ops
 
 | Tech | Used for | Where |
 |---|---|---|
-| **CSP + security headers** | XSS/clickjacking mitigation | `next.config.js` |
+| **CSP + security headers** | XSS/clickjacking mitigation; CSP applied per-request via middleware | `middleware.ts`, `lib/csp.ts`, `next.config.js` |
+| **Request body-size guard** | Rejects oversized payloads before they're buffered into memory or reach zod | `lib/requestGuard.ts` |
+| **Optional operator authorization** | Bearer-token gate on staff-only mutation (incident filing), opt-in via `OPERATOR_API_KEY` | `lib/auth.ts` |
 | **`npm overrides`** | Force patched nested `postcss`/`glob` versions without a breaking Next.js upgrade | `package.json` |
 | **GitHub Actions CI** | Lint + test + build on every push | `.github/workflows/ci.yml` |
 | **Structured logger with redaction** | No secrets/PII in logs | `lib/logger.ts` |

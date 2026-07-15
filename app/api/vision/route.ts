@@ -3,6 +3,7 @@ import { inspectCameraFrame } from '@/lib/agents/safetyAgent';
 import { VisionInputError } from '@/lib/vision';
 import { visionRequestSchema, safeParseBody } from '@/lib/validation';
 import { checkRateLimit, clientKeyFromHeaders } from '@/lib/rateLimiter';
+import { readJsonBody, PayloadTooLargeError, VISION_MAX_BYTES } from '@/lib/requestGuard';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { GeminiError } from '@/lib/gemini';
@@ -21,8 +22,11 @@ export async function POST(request: NextRequest) {
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonBody(request, VISION_MAX_BYTES);
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      return NextResponse.json({ error: error.message }, { status: 413 });
+    }
     return NextResponse.json({ error: 'Request body must be valid JSON.' }, { status: 400 });
   }
 
