@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { env } from './env';
 import { logger } from './logger';
+import { buildCacheKey, getCached, setCached } from './responseCache';
 
 /**
  * This module must only ever be imported from server code (API route
@@ -33,9 +34,20 @@ interface AskGeminiOptions {
   maxOutputTokens?: number;
   /** Milliseconds before the call is aborted. */
   timeoutMs?: number;
+  /**
+   * How long an identical (systemInstruction, userContent, maxOutputTokens)
+   * request may be served from cache instead of calling the model again.
+   * Set to 0 to disable caching for a call whose answer must always be
+   * freshly generated. Defaults to 60s — short enough that grounding data
+   * embedded in the system instruction (e.g. live crowd counts) can't go
+   * stale in a way that matters, long enough to absorb duplicate-question
+   * bursts from many fans/operators asking the same thing at once.
+   */
+  cacheTtlMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_CACHE_TTL_MS = 60_000;
 const MAX_RETRIES = 1;
 
 /**
@@ -45,9 +57,19 @@ const MAX_RETRIES = 1;
  * guarantee — the system instruction itself also tells the model to treat
  * the delimited block as data only.
  */
-function fenceUserContent(userContent: string): string {
-  const cleaned = userContent.replace(/```/g, "'''").slice(0, 4000);
-  return `<<<FAN_MESSAGE_START>>>\n${cleaned}\n<<<FAN_MESSAGE_END>>>`;
+const FENCE_START = '<<<FAN_MESSAGE_START>>>';
+const FENCE_END = '<<<FAN_MESSAGE_END>>>';
+
+export function fenceUserContent(userContent: string): string {
+  const cleaned = userContent
+    .replace(/```/g, "'''")
+    // Neutralize any literal occurrence of the boundary tokens themselves —
+    // otherwise a crafted message could forge a fake closing/opening marker
+    // and trick the model into treating injected text as outside the fence.
+    .replaceAll(FENCE_START, '<[fenced]>')
+    .replaceAll(FENCE_END, '<[fenced]>')
+    .slice(0, 4000);
+  return `${FENCE_START}\n${cleaned}\n${FENCE_END}`;
 }
 
 export async function askGemini({
@@ -55,7 +77,17 @@ export async function askGemini({
   userContent,
   maxOutputTokens = 512,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  cacheTtlMs = DEFAULT_CACHE_TTL_MS,
 }: AskGeminiOptions): Promise<string> {
+  const cacheKey = buildCacheKey({ systemInstruction, userContent, maxOutputTokens });
+  if (cacheTtlMs > 0) {
+    const cached = getCached(cacheKey);
+    if (cached !== null) {
+      logger.info('gemini_cache_hit', { cacheKey: cacheKey.slice(0, 12) });
+      return cached;
+    }
+  }
+
   const model = getClient().getGenerativeModel({
     model: env.geminiModel,
     systemInstruction:
@@ -85,7 +117,11 @@ export async function askGemini({
       if (!text) {
         throw new GeminiError('Empty response from model');
       }
-      return text.trim();
+      const trimmed = text.trim();
+      if (cacheTtlMs > 0) {
+        setCached(cacheKey, trimmed, cacheTtlMs);
+      }
+      return trimmed;
     } catch (error) {
       clearTimeout(timer);
       lastError = error;

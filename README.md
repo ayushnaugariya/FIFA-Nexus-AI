@@ -8,6 +8,9 @@ safety, fan experience, volunteers, transport, and sustainability; an **Operatio
 Copilot** unifies them into a single explainable situational report — so an operator
 can ask "what's happening right now?" instead of checking five dashboards.
 
+> **New to this repo?** See [`TECH_STACK.md`](./TECH_STACK.md) for a file-by-file map
+> of every technology and exactly where it's used.
+
 ---
 
 ## 1. Why a rewrite, and what's real vs. roadmap
@@ -131,6 +134,23 @@ npm run dev                  # http://localhost:3000
   placeholders only.
 - **Fail-safe error handling**: errors are logged via a redacting structured logger
   (`lib/logger.ts`); only generic, non-leaking messages reach the client.
+- **Prompt-fence forgery resistance**: `fenceUserContent` also neutralizes any literal
+  occurrence of its own boundary tokens inside user input (not just code fences), so a
+  crafted message can't forge a fake closing/opening marker — covered by
+  `__tests__/gemini.test.ts`.
+- **Dependency audit — what's fixed vs. accepted**: `npm audit` is clean for the
+  `postcss`/`glob` advisories (forced to patched versions via `package.json`
+  `overrides`, a zero-risk fix for these nested-dependency false-positive-prone
+  findings). Two categories remain and are disclosed rather than hidden:
+  - `esbuild` (via `vitest`→`vite`, dev/test-only): the advisory requires a exposed
+    `vite dev` server accepting arbitrary requests; this project never runs one — it's
+    a test-transform tool only, never a network service.
+  - A cluster of `next@14.2.x` advisories: none have a non-breaking 14.x patch yet; a
+    fix requires jumping to Next 16, a major-version migration out of scope for this
+    submission window. Several only apply to features this app doesn't use
+    (`next/image`, custom `rewrites`/`middleware`, i18n routing); the remainder are
+    DoS-class and are mitigated in practice by the per-IP rate limiting already on
+    every route. Tracked for the Next 16 migration post-submission.
 
 ---
 
@@ -138,6 +158,13 @@ npm run dev                  # http://localhost:3000
 
 - Every Gemini call sets `maxOutputTokens` and a timeout with a single retry; vision
   calls get a longer timeout (15s) reflecting real multimodal latency.
+- **Response caching** (`lib/responseCache.ts`): identical (system instruction, user
+  content, output cap) requests are served from an in-memory cache for 60s by
+  default. This absorbs realistic burst load — hundreds of fans near one gate asking
+  the same concierge question, or several operators loading the Command Center within
+  the same tick — turning duplicate calls into cache hits instead of paid model calls.
+  TTL is short enough that context embedded in prompts (like live crowd counts) can't
+  go meaningfully stale.
 - Deterministic math — crowd classification, forecasting, carbon footprint, need
   scoring, event impact modeling — never touches the network. The model is only
   called where natural-language synthesis genuinely adds value.
@@ -154,14 +181,24 @@ npm run dev                  # http://localhost:3000
 npm test
 ```
 
-Unit tests (`__tests__/`) cover every pure business-logic module with zero network
-dependency: crowd classification and forecasting, the match-event impact model, the
-volunteer need-scoring and greedy allocation algorithm, carbon-footprint math, utility
-status classification, the incident-triage fallback, every zod schema, the rate
-limiter, and the orchestrator's context-gathering and health-score calculation
-(including a determinism check and a "never below 0 / always 100 when calm" bound
-check). `npm test`, `npm run lint`, and `npm run build` all run automatically on every
-push via GitHub Actions (`.github/workflows/ci.yml`).
+**144 tests across 26 files**, with zero network dependency:
+
+- **Pure business logic**: crowd classification/forecasting, the match-event impact
+  model, volunteer need-scoring and greedy allocation, carbon-footprint math, utility
+  status classification, incident-triage fallback, every zod schema, the rate limiter,
+  the response cache, and the orchestrator's context-gathering + health-score
+  calculation (determinism checks, boundary checks).
+- **Security-relevant paths, directly tested**: the prompt-injection fencing helper
+  (forged-marker neutralization), the log-redaction helper (sensitive keys never
+  leak), and the vision-input validator (MIME type + 5MB size enforcement).
+- **Real automated accessibility audits** (`*.a11y.test.tsx`, via `jest-axe` +
+  `@testing-library/react` + `jsdom`): `CrowdHeatmap`, `IncidentForm`,
+  `TransportPlanner`, `SustainabilityCalculator`, and `Header` are each rendered and
+  scanned for WCAG violations with `axe-core` — this catches real issues (missing
+  labels, contrast, landmark structure), not just a documentation claim.
+
+`npm test`, `npm run lint`, and `npm run build` all run automatically on every push
+via GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
 
