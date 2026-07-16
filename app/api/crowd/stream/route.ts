@@ -14,7 +14,7 @@ const MAX_CONNECTION_MS = 15 * 60_000;
 
 /**
  * A lightweight Server-Sent Events stream standing in for a Kafka/Pub-Sub
- * telemetry bus in this reference build (see README §9 for the production
+ * telemetry bus in this reference build (see README §10 for the production
  * path). SSE is one-directional and reconnects natively via `EventSource`,
  * which is exactly the shape the Command Center's live occupancy feed
  * needs, without pulling in a message-broker dependency for a demo.

@@ -40,18 +40,18 @@ describe('POST /api/incidents', () => {
     delete process.env.OPERATOR_API_KEY;
     const { POST } = await importRoute();
     const res = await POST(
-      makePostRequest({ stadiumId: 'metlife-nj', zone: 'North', reporterRole: 'steward', description: 'Fan feeling unwell' }),
+      makePostRequest({ stadiumId: 'metlife-nj', zone: 'North Concourse', reporterRole: 'steward', description: 'Fan feeling unwell' }),
     );
     const data = await res.json();
     expect(res.status).toBe(201);
     expect(data.incident.severity).toBe('medium');
-    expect(data.incident.zone).toBe('North');
+    expect(data.incident.zone).toBe('North Concourse');
   });
 
   it('rejects invalid input with 400', async () => {
     delete process.env.OPERATOR_API_KEY;
     const { POST } = await importRoute();
-    const res = await POST(makePostRequest({ stadiumId: 'metlife-nj', zone: 'North', reporterRole: 'fan', description: 'x' }));
+    const res = await POST(makePostRequest({ stadiumId: 'metlife-nj', zone: 'North Concourse', reporterRole: 'fan', description: 'x' }));
     expect(res.status).toBe(400);
   });
 
@@ -59,7 +59,7 @@ describe('POST /api/incidents', () => {
     delete process.env.OPERATOR_API_KEY;
     const { POST } = await importRoute();
     const res = await POST(
-      makePostRequest({ stadiumId: 'metlife-nj', zone: 'North', reporterRole: 'steward', description: 'Spilled drink near Gate A' }),
+      makePostRequest({ stadiumId: 'metlife-nj', zone: 'North Concourse', reporterRole: 'steward', description: 'Spilled drink near Gate A' }),
     );
     expect(res.status).toBe(201);
   });
@@ -68,7 +68,7 @@ describe('POST /api/incidents', () => {
     process.env.OPERATOR_API_KEY = 'test-operator-key';
     const { POST } = await importRoute();
     const res = await POST(
-      makePostRequest({ stadiumId: 'metlife-nj', zone: 'North', reporterRole: 'steward', description: 'Spilled drink near Gate A' }),
+      makePostRequest({ stadiumId: 'metlife-nj', zone: 'North Concourse', reporterRole: 'steward', description: 'Spilled drink near Gate A' }),
     );
     expect(res.status).toBe(401);
   });
@@ -78,7 +78,7 @@ describe('POST /api/incidents', () => {
     const { POST } = await importRoute();
     const res = await POST(
       makePostRequest(
-        { stadiumId: 'metlife-nj', zone: 'North', reporterRole: 'steward', description: 'Spilled drink near Gate A' },
+        { stadiumId: 'metlife-nj', zone: 'North Concourse', reporterRole: 'steward', description: 'Spilled drink near Gate A' },
         { authorization: 'Bearer test-operator-key' },
       ),
     );
@@ -97,8 +97,8 @@ describe('GET /api/incidents', () => {
   it('returns only incidents for the requested stadium', async () => {
     delete process.env.OPERATOR_API_KEY;
     const { POST, GET } = await importRoute();
-    await POST(makePostRequest({ stadiumId: 'metlife-nj', zone: 'North', reporterRole: 'steward', description: 'Test incident one' }));
-    await POST(makePostRequest({ stadiumId: 'azteca-mx', zone: 'Oriente', reporterRole: 'steward', description: 'Test incident two' }));
+    await POST(makePostRequest({ stadiumId: 'metlife-nj', zone: 'North Concourse', reporterRole: 'steward', description: 'Test incident one' }));
+    await POST(makePostRequest({ stadiumId: 'azteca-mx', zone: 'Puerta Oriente', reporterRole: 'steward', description: 'Test incident two' }));
 
     const res = await GET(new NextRequest('http://localhost/api/incidents?stadiumId=metlife-nj'));
     const data = await res.json();

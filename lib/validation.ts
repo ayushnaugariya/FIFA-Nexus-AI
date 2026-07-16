@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getStadiumById } from './stadiumData';
 
 export const SUPPORTED_LANGUAGE_CODES = [
   'en',
@@ -20,12 +21,28 @@ export const conciergeRequestSchema = z.object({
 });
 export type ConciergeRequest = z.infer<typeof conciergeRequestSchema>;
 
-export const incidentSchema = z.object({
-  stadiumId: z.string().trim().min(1).max(50),
-  zone: z.string().trim().min(1).max(50),
-  reporterRole: z.enum(['volunteer', 'steward', 'medical', 'security', 'ops-manager']),
-  description: z.string().trim().min(3).max(500),
-});
+export const incidentSchema = z
+  .object({
+    stadiumId: z.string().trim().min(1).max(50),
+    zone: z.string().trim().min(1).max(50),
+    reporterRole: z.enum(['volunteer', 'steward', 'medical', 'security', 'ops-manager']),
+    description: z.string().trim().min(3).max(500),
+  })
+  .refine(
+    (data) => {
+      const stadium = getStadiumById(data.stadiumId);
+      // An unknown stadium is reported as its own 404 by the route, not
+      // duplicated here — this refinement only fires once the stadium is
+      // known, checking the zone actually belongs to it. Without this, a
+      // typo'd or free-typed zone (e.g. "north" vs. the real "North
+      // Concourse") would silently fail to match anything in the Volunteer
+      // Copilot's need-scoring (lib/agents/volunteerAgent.ts), which keys
+      // strictly on exact zone name.
+      if (!stadium) return true;
+      return stadium.zones.some((z) => z.name === data.zone);
+    },
+    { message: 'zone must be a real zone name for the given stadium', path: ['zone'] },
+  );
 export type IncidentInput = z.infer<typeof incidentSchema>;
 
 export const transportRequestSchema = z.object({

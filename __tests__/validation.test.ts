@@ -47,17 +47,47 @@ describe('incidentSchema', () => {
   it('rejects an unknown reporter role', () => {
     const result = safeParseBody(incidentSchema, {
       stadiumId: 'metlife-nj',
-      zone: 'North',
+      zone: 'North Concourse',
       reporterRole: 'fan',
       description: 'Someone fainted near Gate A',
     });
     expect(result.success).toBe(false);
   });
 
-  it('accepts a well-formed incident', () => {
+  it('accepts a well-formed incident with a real zone name', () => {
     const result = safeParseBody(incidentSchema, {
       stadiumId: 'metlife-nj',
-      zone: 'North',
+      zone: 'North Concourse',
+      reporterRole: 'steward',
+      description: 'Someone fainted near Gate A',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a zone that does not belong to the given stadium', () => {
+    const result = safeParseBody(incidentSchema, {
+      stadiumId: 'metlife-nj',
+      zone: 'North', // real venues use "North Concourse", not "North"
+      reporterRole: 'steward',
+      description: 'Someone fainted near Gate A',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a zone belonging to a different stadium', () => {
+    const result = safeParseBody(incidentSchema, {
+      stadiumId: 'metlife-nj',
+      zone: 'Puerta Oriente', // belongs to azteca-mx, not metlife-nj
+      reporterRole: 'steward',
+      description: 'Someone fainted near Gate A',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('defers to the route-level 404 for an unknown stadium instead of failing zone matching here', () => {
+    const result = safeParseBody(incidentSchema, {
+      stadiumId: 'not-a-real-stadium',
+      zone: 'anything',
       reporterRole: 'steward',
       description: 'Someone fainted near Gate A',
     });

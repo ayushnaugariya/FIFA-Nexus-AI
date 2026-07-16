@@ -23,51 +23,48 @@ export interface EventImpactModel {
  * A deterministic, explainable impact model per event type. These
  * multipliers are illustrative reference values (the brief's own worked
  * example uses similar magnitudes); a production system would replace them
- * with figures learned from historical concession/exit telemetry, but the
- * *shape* of the reasoning — food/restroom surge after a goal, exit surge
- * after full time — is what actually matters for the recommendation logic,
- * and that shape is what this function encodes and what the tests check.
+ * with figures learned from historical concession/exit telemetry.
+ *
+ * An earlier version of this model tried to split zones into "concession"
+ * vs. "exit" types via a keyword match on the zone name
+ * (`/concourse|plaza|puerta|gate/i`) and applied a different multiplier to
+ * each. That was a real bug: every zone name in `lib/stadiumData.ts`
+ * contains one of those keywords ("North Concourse", "Puerta Oriente",
+ * "East Plaza" — all of them double as gate/entrance areas), so the
+ * "exit" branch and its distinct messaging could never actually fire with
+ * real venue data — dead code disguised as a feature. It's also a more
+ * honest model of reality: a stadium's concourse zones ARE its exit
+ * routes, not a separate category. The single multiplier below is applied
+ * uniformly to every zone; the meaningful differentiation is *between
+ * event types* (halftime produces the largest concourse surge, final
+ * whistle the largest overall movement), which is real and tested.
  */
-const EVENT_PROFILES: Record<
-  MatchEventType,
-  { concessionMultiplier: number; exitMultiplier: number; reasonConcession: string; reasonExit: string }
-> = {
+const EVENT_PROFILES: Record<MatchEventType, { multiplier: number; reason: string }> = {
   goal_scored: {
-    concessionMultiplier: 1.25,
-    exitMultiplier: 1.05,
-    reasonConcession: 'Goal celebrations typically trigger a short surge toward food/merchandise concourses.',
-    reasonExit: 'Minor incidental movement near exits as fans reposition.',
+    multiplier: 1.2,
+    reason: 'Goal celebrations typically trigger a short surge toward concourses and concession stands.',
   },
   halftime: {
-    concessionMultiplier: 1.6,
-    exitMultiplier: 1.1,
-    reasonConcession: 'Halftime reliably produces the largest concourse surge of the match.',
-    reasonExit: 'Some early-leaving fans begin moving toward exits.',
+    multiplier: 1.55,
+    reason: 'Halftime reliably produces the largest concourse surge of the match.',
   },
   final_whistle: {
-    concessionMultiplier: 1.1,
-    exitMultiplier: 1.9,
-    reasonConcession: 'Concession demand drops as fans prioritize leaving.',
-    reasonExit: 'Full-time triggers the largest exit and transport surge of the match.',
+    multiplier: 1.75,
+    reason: 'Full-time triggers the largest movement of the match as fans head for the exits.',
   },
 };
-
-function isConcessionZone(zone: ZoneSnapshot): boolean {
-  return /concourse|plaza|puerta|gate/i.test(zone.zoneName);
-}
 
 export function simulateMatchEvent(eventType: MatchEventType, zones: ZoneSnapshot[]): EventImpactModel {
   const profile = EVENT_PROFILES[eventType];
 
   const zoneImpacts: PredictedZoneImpact[] = zones.map((zone) => {
-    const multiplier = isConcessionZone(zone) ? profile.concessionMultiplier : profile.exitMultiplier;
-    const projected = Math.min(100, Math.round(zone.occupancyPercent * multiplier));
+    const projected = Math.min(100, Math.round(zone.occupancyPercent * profile.multiplier));
     return {
       zoneId: zone.zoneId,
       zoneName: zone.zoneName,
       currentOccupancyPercent: zone.occupancyPercent,
       projectedOccupancyPercent: projected,
-      reason: isConcessionZone(zone) ? profile.reasonConcession : profile.reasonExit,
+      reason: profile.reason,
     };
   });
 

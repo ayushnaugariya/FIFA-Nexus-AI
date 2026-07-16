@@ -35,9 +35,41 @@ describe('gatherStadiumContext', () => {
       severity: 'high',
       recommendedResponse: 'respond',
       createdAt: new Date().toISOString(),
+      status: 'open',
+      resolvedAt: null,
     });
     const context = baseContext(2);
     expect(context.incidents).toHaveLength(1);
+  });
+
+  it('live path (no seed) reads current crowd state without advancing it — regression test for the bug where every Copilot call independently drove the shared crowd simulation forward', async () => {
+    const { _resetCrowdLiveStateForTests } = await import('../lib/crowdLiveState');
+    const { getCrowdAgentState } = await import('../lib/agents/crowdAgent');
+    _resetCrowdLiveStateForTests();
+
+    const tick = getCrowdAgentState(stadium); // the one real "clock" tick
+    const contextA = gatherStadiumContext(stadium); // no seed - live path
+    const contextB = gatherStadiumContext(stadium); // called again moments later
+
+    expect(contextA.crowd.snapshot.zones).toEqual(tick.snapshot.zones);
+    expect(contextB.crowd.snapshot.zones).toEqual(tick.snapshot.zones);
+  });
+
+  it('excludes resolved incidents — regression test for the bug where a resolved incident kept degrading the score forever', () => {
+    addIncident({
+      id: '1',
+      stadiumId: stadium.id,
+      zone: 'North Concourse',
+      reporterRole: 'steward',
+      description: 'test',
+      severity: 'critical',
+      recommendedResponse: 'respond',
+      createdAt: new Date().toISOString(),
+      status: 'resolved',
+      resolvedAt: new Date().toISOString(),
+    });
+    const context = baseContext(6);
+    expect(context.incidents).toHaveLength(0);
   });
 });
 
@@ -112,8 +144,8 @@ describe('computeStadiumHealthScore', () => {
         },
       },
       incidents: [
-        { id: '1', stadiumId: stadium.id, zone: 'x', reporterRole: 'steward', description: 'x', severity: 'critical', recommendedResponse: 'x', createdAt: new Date().toISOString() },
-        { id: '2', stadiumId: stadium.id, zone: 'x', reporterRole: 'steward', description: 'x', severity: 'critical', recommendedResponse: 'x', createdAt: new Date().toISOString() },
+        { id: '1', stadiumId: stadium.id, zone: 'x', reporterRole: 'steward', description: 'x', severity: 'critical', recommendedResponse: 'x', createdAt: new Date().toISOString(), status: 'open', resolvedAt: null },
+        { id: '2', stadiumId: stadium.id, zone: 'x', reporterRole: 'steward', description: 'x', severity: 'critical', recommendedResponse: 'x', createdAt: new Date().toISOString(), status: 'open', resolvedAt: null },
       ],
       utilities: { reading: context.utilities.reading, status: 'action-needed' },
     };

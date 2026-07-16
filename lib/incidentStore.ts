@@ -1,4 +1,5 @@
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type IncidentStatus = 'open' | 'resolved';
 
 export interface Incident {
   id: string;
@@ -9,6 +10,8 @@ export interface Incident {
   severity: IncidentSeverity;
   recommendedResponse: string;
   createdAt: string;
+  status: IncidentStatus;
+  resolvedAt: string | null;
 }
 
 const incidents: Incident[] = [];
@@ -19,8 +22,28 @@ export function addIncident(incident: Incident): void {
   if (incidents.length > 200) incidents.length = 200;
 }
 
-export function listIncidents(stadiumId?: string): Incident[] {
-  return stadiumId ? incidents.filter((i) => i.stadiumId === stadiumId) : [...incidents];
+/**
+ * By default returns only *open* incidents — this is the fix for a real
+ * bug: previously every incident ever filed counted toward the health
+ * score and volunteer need-scoring forever, with no way to clear one, so a
+ * single resolved incident from minutes ago would keep permanently
+ * degrading "real-time" decision support for the rest of the session. Pass
+ * `includeResolved: true` for an audit/history view.
+ */
+export function listIncidents(stadiumId?: string, options: { includeResolved?: boolean } = {}): Incident[] {
+  const { includeResolved = false } = options;
+  return incidents.filter(
+    (i) => (!stadiumId || i.stadiumId === stadiumId) && (includeResolved || i.status === 'open'),
+  );
+}
+
+/** Marks an incident resolved. Returns the updated incident, or null if the id doesn't exist. */
+export function resolveIncident(id: string): Incident | null {
+  const incident = incidents.find((i) => i.id === id);
+  if (!incident) return null;
+  incident.status = 'resolved';
+  incident.resolvedAt = new Date().toISOString();
+  return incident;
 }
 
 /** Exposed for tests so each test file starts from a clean slate. */

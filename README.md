@@ -190,7 +190,76 @@ npm run dev                  # http://localhost:3000
 
 ---
 
-## 6. Efficiency
+## 6. Correctness bugs found and fixed (not just security/style)
+
+An adversarial re-read of the actual runtime behavior — not just the code as written —
+surfaced real logic bugs. Each was reproduced, fixed, covered by a regression test, and
+verified against a live running server, not assumed fixed from reading the diff alone.
+
+- **Live crowd data was three independent random draws, not one live feed.** The SSE
+  stream, the Operations Copilot, and the Event Simulator each called
+  `generateCrowdSnapshot()` with no seed, which defaults to `Date.now()` — every call
+  was a fresh, unrelated random snapshot. Result: the live heatmap jumped erratically
+  every 5s instead of evolving, and asking the Copilot "what's happening" could show
+  different numbers than what was on screen at that exact moment. Fixed with
+  `lib/crowdLiveState.ts`: one persisted, bounded random-walk value per (stadium,
+  zone) that every live consumer reads through, so they agree with each other and
+  evolve smoothly. Verified live: the same zone reads 58% across an SSE tick and two
+  separate Copilot calls taken moments apart.
+- **...and then the fix for that bug introduced a second one**, caught before shipping:
+  `gatherStadiumContext` (used by every `/api/copilot` call) read live state via the
+  *advancing* function, meaning every Copilot question and every periodic context poll
+  independently drove the shared simulation forward on top of the SSE tick — the crowd
+  would "move" faster the more the app was queried. Fixed by splitting
+  `getCrowdAgentState` (advances — reserved for the one real SSE tick) from
+  `peekCrowdAgentState` (reads only), and pointing the orchestrator at the latter.
+  Regression-tested at both the `crowdAgent` and `orchestrator` level.
+- **Same bug class in the Utilities panel.** `getVenueUtilityState` also defaulted to
+  `Date.now()`, so power/water/waste jumped to unrelated values on every poll. Fixed
+  with the same persisted-state pattern (`advanceLiveUtilityReading`), plus a
+  physically-correct constraint the fully-random version got wrong: waste capacity can
+  only rise between service visits, never spontaneously drop.
+- **Incidents never resolved.** `getActiveIncidents` returned every incident ever
+  filed, forever — the health score and volunteer allocation could only ever get
+  worse within a session, never recover. Added `status`/`resolvedAt`, a
+  `PATCH /api/incidents/[id]` endpoint, and a "Mark resolved" action in the UI;
+  `listIncidents` now defaults to open-only.
+- **Incident zones were free text that silently failed to match anything.** The
+  volunteer need-scoring keys incidents to zones by exact name match, but the report
+  form was a free-text field — a steward typing "north" instead of "North Concourse"
+  would file a real incident that the Volunteer Copilot could never see. Fixed by
+  turning the field into a `<select>` of the venue's real zones, *and* adding a
+  server-side zod refinement so the same rule holds even for direct API calls, not
+  just the UI.
+- **The event simulator's zone classification was unreachable dead code.** It tried to
+  split zones into "concession" vs. "exit" types via a keyword regex on the zone name
+  (`/concourse|plaza|puerta|gate/i`) — but every real zone name in `lib/stadiumData.ts`
+  contains one of those words, so the "exit" branch and its distinct messaging could
+  never fire with real data. It's also a more honest model: a stadium's concourses
+  *are* its exit routes, not a separate category. Replaced with a single per-event
+  multiplier applied uniformly, keeping the part that was real and tested — the
+  differentiation *between* event types (halftime > goal, final whistle > halftime).
+- **Volunteer/Utilities panels froze after first load.** The Command Center fetched
+  cross-agent context once per stadium selection with no polling, while the crowd
+  heatmap right next to it updated live every 5s via SSE — visibly inconsistent. Added
+  a 20s polling interval for the context fetch.
+- **Request body size was unbounded.** Next.js route handlers impose no default limit
+  on `request.json()` — an oversized payload could be forced fully into memory before
+  zod ever validated it. Fixed in `lib/requestGuard.ts`, verified live (413 on a 200KB
+  message field).
+- **The SSE stream had no rate limiting or max duration.** An attacker could open
+  unlimited long-lived connections, each holding a server-side `setInterval` open
+  forever. Fixed: rate-limited on connection, 15-minute server-side auto-close.
+- **The prompt-injection fence didn't neutralize forged boundary markers**, only code
+  fences — a crafted message could inject a fake `<<<FAN_MESSAGE_END>>>` to try to
+  escape the "this is data, not instructions" boundary. Found via writing the test for
+  it, fixed, then fixed the test.
+
+One security hardening attempt was tried, tested against a real build, found to break
+the app, and reverted rather than shipped or silently abandoned — see §5's note on the
+`script-src 'unsafe-inline'` tradeoff.
+
+## 7. Efficiency
 
 - Every Gemini call sets `maxOutputTokens` and a timeout with a single retry; vision
   calls get a longer timeout (15s) reflecting real multimodal latency.
@@ -211,13 +280,13 @@ npm run dev                  # http://localhost:3000
 
 ---
 
-## 7. Testing
+## 8. Testing
 
 ```bash
 npm test
 ```
 
-**177 tests across 32 files**, with zero network dependency:
+**212 tests across 33 files**, with zero network dependency:
 
 - **Pure business logic**: crowd classification/forecasting, the match-event impact
   model, volunteer need-scoring and greedy allocation, carbon-footprint math, utility
@@ -240,13 +309,18 @@ npm test
   `TransportPlanner`, `SustainabilityCalculator`, and `Header` are each rendered and
   scanned for WCAG violations with `axe-core` — this catches real issues (missing
   labels, contrast, landmark structure), not just a documentation claim.
+- **Regression tests for the correctness bugs in §6**: the peek-vs-advance crowd state
+  fix (`crowdAgent.test.ts`, `orchestrator.test.ts`), the incident-resolution and
+  zone-matching fixes (`incidentStore.test.ts`, `validation.test.ts`,
+  `routes/incidents.route.test.ts`), and the corrected event-impact model
+  (`eventSimulator.test.ts`) all have a test that fails on the old, buggy behavior.
 
 `npm test`, `npm run lint`, and `npm run build` all run automatically on every push
 via GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
 
-## 8. Accessibility
+## 9. Accessibility
 
 - Semantic landmarks, a "skip to main content" link, and full keyboard operability
   with a persistent visible focus ring.
@@ -264,7 +338,7 @@ via GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
 
-## 9. Roadmap to production scale
+## 10. Roadmap to production scale
 
 - Swap the in-memory incident/volunteer/rate-limit stores for a shared store
   (Redis/Postgres) so state is consistent across instances.
@@ -277,7 +351,7 @@ via GitHub Actions (`.github/workflows/ci.yml`).
 
 ---
 
-## 10. Tech stack
+## 11. Tech stack
 
 Next.js 14 (App Router) · TypeScript · Tailwind CSS · Google Gemini API
 (`@google/generative-ai`, text + multimodal) · Server-Sent Events · zod · Vitest ·

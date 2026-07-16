@@ -4,7 +4,25 @@ import {
   addIncident,
   classifySeverityFallback,
   listIncidents,
+  resolveIncident,
+  type Incident,
 } from '../lib/incidentStore';
+
+function makeIncident(overrides: Partial<Incident> = {}): Incident {
+  return {
+    id: '1',
+    stadiumId: 'metlife-nj',
+    zone: 'North Concourse',
+    reporterRole: 'steward',
+    description: 'test incident',
+    severity: 'low',
+    recommendedResponse: 'log it',
+    createdAt: new Date().toISOString(),
+    status: 'open',
+    resolvedAt: null,
+    ...overrides,
+  };
+}
 
 describe('classifySeverityFallback', () => {
   it('classifies life-threatening keywords as critical', () => {
@@ -37,53 +55,44 @@ describe('incident store', () => {
 
   it('starts empty and returns newly added incidents in reverse-chronological order', () => {
     expect(listIncidents()).toHaveLength(0);
-    addIncident({
-      id: '1',
-      stadiumId: 'metlife-nj',
-      zone: 'North',
-      reporterRole: 'steward',
-      description: 'first',
-      severity: 'low',
-      recommendedResponse: 'log it',
-      createdAt: new Date().toISOString(),
-    });
-    addIncident({
-      id: '2',
-      stadiumId: 'metlife-nj',
-      zone: 'South',
-      reporterRole: 'medical',
-      description: 'second',
-      severity: 'high',
-      recommendedResponse: 'respond',
-      createdAt: new Date().toISOString(),
-    });
+    addIncident(makeIncident({ id: '1', description: 'first', severity: 'low' }));
+    addIncident(makeIncident({ id: '2', zone: 'South Concourse', reporterRole: 'medical', description: 'second', severity: 'high' }));
     const all = listIncidents();
     expect(all).toHaveLength(2);
-    expect(all[0].id).toBe('2');
+    expect(all[0]!.id).toBe('2');
   });
 
   it('filters by stadiumId', () => {
-    addIncident({
-      id: '1',
-      stadiumId: 'azteca-mx',
-      zone: 'Oriente',
-      reporterRole: 'steward',
-      description: 'x',
-      severity: 'low',
-      recommendedResponse: 'y',
-      createdAt: new Date().toISOString(),
-    });
-    addIncident({
-      id: '2',
-      stadiumId: 'metlife-nj',
-      zone: 'North',
-      reporterRole: 'steward',
-      description: 'x',
-      severity: 'low',
-      recommendedResponse: 'y',
-      createdAt: new Date().toISOString(),
-    });
+    addIncident(makeIncident({ id: '1', stadiumId: 'azteca-mx', zone: 'Puerta Oriente' }));
+    addIncident(makeIncident({ id: '2', stadiumId: 'metlife-nj' }));
     expect(listIncidents('azteca-mx')).toHaveLength(1);
     expect(listIncidents('metlife-nj')).toHaveLength(1);
+  });
+
+  it('excludes resolved incidents by default — the actual bug this fixes', () => {
+    addIncident(makeIncident({ id: '1' }));
+    addIncident(makeIncident({ id: '2' }));
+    resolveIncident('1');
+    const open = listIncidents('metlife-nj');
+    expect(open).toHaveLength(1);
+    expect(open[0]!.id).toBe('2');
+  });
+
+  it('includes resolved incidents when explicitly requested (audit view)', () => {
+    addIncident(makeIncident({ id: '1' }));
+    resolveIncident('1');
+    expect(listIncidents('metlife-nj', { includeResolved: true })).toHaveLength(1);
+    expect(listIncidents('metlife-nj')).toHaveLength(0);
+  });
+
+  it('resolveIncident sets status and resolvedAt, and returns the updated incident', () => {
+    addIncident(makeIncident({ id: '1' }));
+    const resolved = resolveIncident('1');
+    expect(resolved?.status).toBe('resolved');
+    expect(resolved?.resolvedAt).not.toBeNull();
+  });
+
+  it('resolveIncident returns null for an unknown id', () => {
+    expect(resolveIncident('does-not-exist')).toBeNull();
   });
 });

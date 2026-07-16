@@ -4,6 +4,7 @@ import {
   addIncident,
   classifySeverityFallback,
   listIncidents,
+  resolveIncident,
   type Incident,
   type IncidentSeverity,
 } from '../incidentStore';
@@ -26,9 +27,16 @@ export async function fileIncidentReport(input: {
     severity,
     recommendedResponse,
     createdAt: new Date().toISOString(),
+    status: 'open',
+    resolvedAt: null,
   };
   addIncident(incident);
   return incident;
+}
+
+/** Marks an incident resolved so it stops counting toward the health score and volunteer need-scoring. */
+export function resolveIncidentReport(id: string): Incident | null {
+  return resolveIncident(id);
 }
 
 async function classifyIncidentSeverity(

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { DEFAULT_STADIUM } from '@/lib/stadiumData';
+import { useCallback, useEffect, useState } from 'react';
+import { DEFAULT_STADIUM, getStadiumById } from '@/lib/stadiumData';
 import { StadiumSelect } from '@/components/StadiumSelect';
 import { Card } from '@/components/Card';
 import { CrowdHeatmap } from '@/components/CrowdHeatmap';
@@ -20,6 +20,12 @@ interface ContextState {
   volunteers: { pool: { id: string; name: string; status: 'available' | 'assigned'; assignedZoneId: string | null }[]; plan: { zoneId: string; zoneName: string; volunteerIds: string[] }[] };
   utilities: { reading: { powerKw: number; waterLitersPerMin: number; wastePercentFull: number }; status: string };
 }
+
+// Matches a reasonable operational refresh cadence without hammering the
+// server; the crowd heatmap has its own faster 5s SSE tick (see
+// /api/crowd/stream) since occupancy changes faster than volunteer
+// allocation or utility draw meaningfully do.
+const CONTEXT_REFRESH_MS = 20_000;
 
 export default function CommandCenterPage() {
   const [stadiumId, setStadiumId] = useState(DEFAULT_STADIUM.id);
@@ -43,31 +49,45 @@ export default function CommandCenterPage() {
     return () => source.close();
   }, [stadiumId]);
 
-  // Cross-agent context (incidents, volunteers, utilities) for the side panels.
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/copilot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stadiumId }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled && data.context) {
-          setContext({
-            incidents: data.context.incidents,
-            volunteers: data.context.volunteers,
-            utilities: data.context.utilities,
-          });
-        }
+  // Cross-agent context (incidents, volunteers, utilities) for the side
+  // panels. Polled on an interval — not fetched once — so the Volunteer
+  // Copilot and Utilities panels stay current alongside the live crowd
+  // heatmap instead of freezing at whatever they showed on first load.
+  const loadContext = useCallback(
+    (signal: AbortSignal) => {
+      fetch('/api/copilot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stadiumId }),
+        signal,
       })
-      .catch(() => undefined);
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.context) {
+            setContext({
+              incidents: data.context.incidents,
+              volunteers: data.context.volunteers,
+              utilities: data.context.utilities,
+            });
+          }
+        })
+        .catch(() => undefined);
+    },
+    [stadiumId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadContext(controller.signal);
+    const interval = setInterval(() => loadContext(controller.signal), CONTEXT_REFRESH_MS);
     return () => {
-      cancelled = true;
+      controller.abort();
+      clearInterval(interval);
     };
-  }, [stadiumId]);
+  }, [loadContext]);
 
   const atRiskForecasts = forecasts.filter((f) => f.willBecomeCriticalAt);
+  const currentZones = getStadiumById(stadiumId)?.zones ?? [];
 
   return (
     <div>
@@ -152,6 +172,7 @@ export default function CommandCenterPage() {
               <h2 className="mb-3 font-display text-xl">Report an incident</h2>
               <IncidentForm
                 stadiumId={stadiumId}
+                zones={currentZones}
                 onCreated={(incident) =>
                   setContext((prev) => (prev ? { ...prev, incidents: [incident, ...prev.incidents] } : prev))
                 }
@@ -159,7 +180,14 @@ export default function CommandCenterPage() {
             </Card>
             <Card>
               <h2 className="mb-3 font-display text-xl">Incident feed</h2>
-              <IncidentFeed incidents={context?.incidents ?? []} />
+              <IncidentFeed
+                incidents={context?.incidents ?? []}
+                onResolved={(incidentId) =>
+                  setContext((prev) =>
+                    prev ? { ...prev, incidents: prev.incidents.filter((i) => i.id !== incidentId) } : prev,
+                  )
+                }
+              />
             </Card>
           </div>
         </div>

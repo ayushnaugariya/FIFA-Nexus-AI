@@ -1,6 +1,12 @@
 import { askGemini } from '../gemini';
 import { computeCarbonFootprint, type CarbonEstimate, type TravelMode } from '../carbon';
-import { classifyUtilityStatus, simulateUtilityReading, type UtilityReading, type UtilityStatus } from '../utilities';
+import {
+  advanceLiveUtilityReading,
+  classifyUtilityStatus,
+  simulateUtilityReading,
+  type UtilityReading,
+  type UtilityStatus,
+} from '../utilities';
 
 export async function estimateFanFootprint(input: {
   travelMode: TravelMode;
@@ -40,7 +46,8 @@ const BASE_POWER_KW: Record<string, number> = {
 
 export function getVenueUtilityState(stadiumId: string, seed?: number): VenueUtilityState {
   const basePowerKw = BASE_POWER_KW[stadiumId] ?? 3000;
-  const reading = simulateUtilityReading(basePowerKw, seed ?? Date.now());
+  const reading =
+    seed !== undefined ? simulateUtilityReading(basePowerKw, seed) : advanceLiveUtilityReading(stadiumId, basePowerKw);
   const status = classifyUtilityStatus(reading, basePowerKw);
   return { reading, status };
 }

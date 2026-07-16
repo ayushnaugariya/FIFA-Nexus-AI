@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readJsonBody, PayloadTooLargeError } from '@/lib/requestGuard';
 import { fileIncidentReport, getActiveIncidents } from '@/lib/agents/safetyAgent';
+import { getStadiumById } from '@/lib/stadiumData';
 import { incidentSchema, safeParseBody } from '@/lib/validation';
 import { checkRateLimit, clientKeyFromHeaders } from '@/lib/rateLimiter';
 import { isOperatorRequestAuthorized } from '@/lib/auth';
@@ -40,6 +41,13 @@ export async function POST(request: NextRequest) {
   const parsed = safeParseBody(incidentSchema, body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  // Unlike concierge/transport/event, this route previously never checked
+  // the stadium actually exists — an incident could silently be filed
+  // against a nonexistent stadiumId. Matches the rest of the codebase now.
+  if (!getStadiumById(parsed.data.stadiumId)) {
+    return NextResponse.json({ error: 'Unknown stadiumId.' }, { status: 404 });
   }
 
   const incident = await fileIncidentReport(parsed.data);

@@ -1,6 +1,6 @@
 import type { Stadium } from '../stadiumData';
 import { askGemini } from '../gemini';
-import { getCrowdAgentState, type CrowdAgentState } from './crowdAgent';
+import { getCrowdAgentState, peekCrowdAgentState, type CrowdAgentState } from './crowdAgent';
 import { getActiveIncidents, countOpenIncidentsByZoneName } from './safetyAgent';
 import { runVolunteerAllocation, type VolunteerAgentState } from './volunteerAgent';
 import { getVenueUtilityState, type VenueUtilityState } from './sustainabilityAgent';
@@ -21,12 +21,22 @@ export interface StadiumContext {
  * instead of an operator checking five dashboards, one function call
  * collects everything the Operations Copilot needs to reason over.
  *
- * Pure with respect to its inputs (seed controls the deterministic crowd/
- * utility simulation), so it's directly unit-testable without touching
- * Gemini or the network.
+ * `seed` provided (tests) → deterministic crowd data via `getCrowdAgentState`.
+ * `seed` omitted (production, every real `/api/copilot` call) →
+ * `peekCrowdAgentState`, which *reads* the live crowd state without
+ * advancing it. This matters: `getCrowdAgentState`'s live path calls
+ * `advanceZoneOccupancy`, which is meant to be driven by exactly one
+ * "clock" (the SSE stream's 5s tick). Using it here too was a real bug —
+ * every Copilot question, and every periodic context poll from the
+ * Command Center, independently advanced the same shared simulation state
+ * on top of whatever the SSE tick was already doing, making the crowd
+ * "move" faster the more the app was queried instead of at a steady rate
+ * tied to real time. `gatherStadiumContext` is otherwise pure with respect
+ * to its inputs, so it's directly unit-testable without touching Gemini or
+ * the network.
  */
 export function gatherStadiumContext(stadium: Stadium, seed?: number): StadiumContext {
-  const crowd = getCrowdAgentState(stadium, seed);
+  const crowd = seed !== undefined ? getCrowdAgentState(stadium, seed) : peekCrowdAgentState(stadium);
   const incidents = getActiveIncidents(stadium.id);
   const openIncidentCounts = countOpenIncidentsByZoneName(stadium.id);
   const volunteers = runVolunteerAllocation(crowd.snapshot, openIncidentCounts);

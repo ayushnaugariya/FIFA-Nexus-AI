@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readJsonBody, PayloadTooLargeError } from '@/lib/requestGuard';
 import { getStadiumById } from '@/lib/stadiumData';
-import { generateCrowdSnapshot } from '@/lib/crowdSim';
+import { classifyCrowdLevel, type CrowdSnapshot, type ZoneSnapshot } from '@/lib/crowdSim';
+import { peekZoneOccupancy } from '@/lib/crowdLiveState';
 import { simulateMatchEvent } from '@/lib/eventSimulator';
 import { askGemini } from '@/lib/gemini';
 import { eventRequestSchema, safeParseBody } from '@/lib/validation';
@@ -38,7 +39,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unknown stadiumId.' }, { status: 404 });
   }
 
-  const snapshot = generateCrowdSnapshot(stadium);
+  // Read (never advance) the same shared live state the Command Center and
+  // Operations Copilot use, so "before" here always matches what's on the
+  // dashboard right now — simulating a hypothetical event must not itself
+  // perturb the live occupancy just because someone asked a "what if".
+  const zones: ZoneSnapshot[] = stadium.zones.map((zone) => {
+    const { occupancyPercent, trend } = peekZoneOccupancy(stadium.id, zone.id);
+    return { zoneId: zone.id, zoneName: zone.name, occupancyPercent, level: classifyCrowdLevel(occupancyPercent), trend };
+  });
+  const snapshot: CrowdSnapshot = { stadiumId: stadium.id, generatedAt: new Date().toISOString(), zones };
+
   const impact = simulateMatchEvent(parsed.data.eventType, snapshot.zones);
 
   let announcement = defaultAnnouncement(parsed.data.eventType, stadium.name);

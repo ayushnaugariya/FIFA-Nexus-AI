@@ -27,14 +27,14 @@ codebase without reading every line first.
 |---|---|---|
 | **zod** | Every API input validated before touching business logic | `lib/validation.ts`, imported in every `app/api/*/route.ts` |
 | Static reference data | 3 real World Cup 2026 venues (MetLife, Azteca, BC Place) with zones/gates/transit/amenities, grounds every AI prompt | `lib/stadiumData.ts` |
-| In-memory stores | Incidents, volunteer pool, rate-limit windows, response cache (documented as a demo-scope limitation, see README §9) | `lib/incidentStore.ts`, `lib/volunteers.ts`, `lib/rateLimiter.ts`, `lib/responseCache.ts` |
+| In-memory stores | Incidents, volunteer pool, rate-limit windows, response cache (documented as a demo-scope limitation, see README §10) | `lib/incidentStore.ts`, `lib/volunteers.ts`, `lib/rateLimiter.ts`, `lib/responseCache.ts` |
 
 ## The seven agents (business logic layer)
 
 | File | Role | Pure logic (unit-tested) | AI calls |
 |---|---|---|---|
 | `lib/agents/orchestrator.ts` | Operations Copilot — gathers all agent state, synthesizes report, computes health score | `gatherStadiumContext`, `computeStadiumHealthScore` | `synthesizeSituationReport` |
-| `lib/agents/crowdAgent.ts` | Crowd Intelligence | `getCrowdAgentState`, `buildOccupancyHistory` (+ `lib/crowdSim.ts`, `lib/prediction.ts`) | none — fully deterministic |
+| `lib/agents/crowdAgent.ts` | Crowd Intelligence | `getCrowdAgentState` (advances live state — the one true SSE-tick caller), `peekCrowdAgentState` (read-only, used by the Copilot), `buildOccupancyHistory` (+ `lib/crowdLiveState.ts`, `lib/crowdSim.ts`, `lib/prediction.ts`) | none — fully deterministic |
 | `lib/agents/safetyAgent.ts` | Safety & Emergency | incident query helpers (+ `lib/incidentStore.ts`) | incident triage, vision inspection |
 | `lib/agents/volunteerAgent.ts` | Volunteer Copilot | `buildZoneNeeds`, allocation (+ `lib/volunteers.ts`) | none — fully deterministic |
 | `lib/agents/transportAgent.ts` | Transport Intelligence | `classifyDepartureSurge` | travel recommendation |
@@ -92,8 +92,8 @@ typed JSON response, generic error message on failure (never leaks internals).
 | **`@testing-library/react`** | Rendering components in isolation |
 | **`jest-axe`** | Automated WCAG violation scanning (`toHaveNoViolations`) |
 
-177 tests / 32 files, including route-level integration tests with Gemini mocked at
-the module boundary. See README §7 for the full breakdown.
+212 tests / 33 files, including route-level integration tests with Gemini mocked at
+the module boundary. See README §8 for the full breakdown.
 
 ## Security & ops
 
