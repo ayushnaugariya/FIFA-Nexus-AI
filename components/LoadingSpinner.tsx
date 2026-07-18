@@ -1,11 +1,11 @@
-export function LoadingSpinner({ label = 'Loading' }: { label?: string }) {
+export function LoadingSpinner({ label = 'Loading…' }: { label?: string }) {
   return (
-    <span role="status" className="inline-flex items-center gap-2 text-sm text-mist">
+    <span className="inline-flex items-center gap-2 text-sm text-mist" role="status" aria-label={label || 'Loading'}>
       <span
         aria-hidden="true"
-        className="h-4 w-4 animate-spin rounded-full border-2 border-mist border-t-floodlight motion-reduce:animate-none"
+        className="inline-block h-4 w-4 rounded-full border-2 border-white/20 border-t-floodlight animate-spin flex-shrink-0"
       />
-      <span>{label}</span>
+      {label && <span>{label}</span>}
     </span>
   );
 }

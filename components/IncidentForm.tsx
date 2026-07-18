@@ -5,13 +5,20 @@ import type { Incident } from '@/lib/incidentStore';
 
 const ROLES = ['volunteer', 'steward', 'medical', 'security', 'ops-manager'] as const;
 
+const ROLE_ICONS: Record<string, string> = {
+  volunteer: '🙋',
+  steward: '🦺',
+  medical: '🏥',
+  security: '🛡️',
+  'ops-manager': '📋',
+};
+
 export function IncidentForm({
   stadiumId,
   zones,
   onCreated,
 }: {
   stadiumId: string;
-  /** Real zones for the currently selected stadium — the dropdown, not free text, is what keeps this in sync with volunteer need-scoring (see lib/agents/volunteerAgent.ts). */
   zones: { id: string; name: string }[];
   onCreated: (incident: Incident) => void;
 }) {
@@ -20,8 +27,8 @@ export function IncidentForm({
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  // Keep the selected zone valid when the stadium (and therefore the zone list) changes.
   useEffect(() => {
     if (!zones.some((z) => z.name === zone)) {
       setZone(zones[0]?.name ?? '');
@@ -32,6 +39,7 @@ export function IncidentForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSuccess(false);
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/incidents', {
@@ -43,6 +51,8 @@ export function IncidentForm({
       if (!res.ok) throw new Error(data.error || 'Could not submit the report.');
       onCreated(data.incident);
       setDescription('');
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not submit the report.');
     } finally {
@@ -51,47 +61,52 @@ export function IncidentForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3" aria-describedby={error ? 'incident-error' : undefined}>
+    <form onSubmit={handleSubmit} className="space-y-4" aria-describedby={error ? 'incident-error' : undefined}>
+      {/* Zone */}
       <div>
-        <label htmlFor="incident-zone" className="mb-1 block text-sm font-medium text-mist">
-          Zone
+        <label htmlFor="incident-zone" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-mist">
+          📍 Zone
         </label>
         <select
           id="incident-zone"
           value={zone}
           onChange={(e) => setZone(e.target.value)}
           required
-          className="w-full rounded-card border border-white/20 bg-pitchnight px-3 py-2 text-chalk"
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-chalk focus:border-floodlight/30 focus:outline-none transition-colors"
         >
           {zones.map((z) => (
-            <option key={z.id} value={z.name}>
+            <option key={z.id} value={z.name} className="bg-pitchnight2">
               {z.name}
             </option>
           ))}
         </select>
       </div>
 
+      {/* Role */}
       <div>
-        <label htmlFor="incident-role" className="mb-1 block text-sm font-medium text-mist">
-          Your role
-        </label>
-        <select
-          id="incident-role"
-          value={role}
-          onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
-          className="w-full rounded-card border border-white/20 bg-pitchnight px-3 py-2 text-chalk"
-        >
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-mist">👤 Your Role</p>
+        <div className="flex flex-wrap gap-2">
           {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRole(r)}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                role === r
+                  ? 'border-clay/40 bg-clay/15 text-clay'
+                  : 'border-white/10 bg-white/[0.04] text-mist hover:text-chalk hover:bg-white/[0.08]'
+              }`}
+            >
+              {ROLE_ICONS[r]} {r}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
+      {/* Description */}
       <div>
-        <label htmlFor="incident-description" className="mb-1 block text-sm font-medium text-mist">
-          What&apos;s happening?
+        <label htmlFor="incident-description" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-mist">
+          📝 What&apos;s happening?
         </label>
         <textarea
           id="incident-description"
@@ -101,22 +116,30 @@ export function IncidentForm({
           minLength={3}
           maxLength={500}
           rows={3}
-          className="w-full rounded-card border border-white/20 bg-pitchnight px-3 py-2 text-chalk"
+          placeholder="Describe the incident clearly — the AI will triage severity and recommend a response…"
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-chalk placeholder:text-mist/60 focus:border-floodlight/30 focus:outline-none transition-colors resize-none"
         />
+        <p className="mt-1 text-right text-xs text-mist">{description.length}/500</p>
       </div>
 
       {error && (
-        <p id="incident-error" role="alert" className="text-sm text-clay">
-          {error}
-        </p>
+        <div id="incident-error" role="alert" className="rounded-xl border border-clay/30 bg-clay/10 p-3 text-sm text-clay">
+          ⚠️ {error}
+        </div>
+      )}
+
+      {success && (
+        <div role="status" className="animate-fade-in rounded-xl border border-turf/30 bg-turf/10 p-3 text-sm text-turf">
+          ✅ Incident reported and AI-triaged successfully.
+        </div>
       )}
 
       <button
         type="submit"
-        disabled={isSubmitting || !zone}
-        className="rounded-card bg-clay px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        disabled={isSubmitting || !zone || !description.trim()}
+        className="btn-glow w-full rounded-xl bg-clay py-3 text-sm font-semibold text-white disabled:opacity-50 transition-all"
       >
-        {isSubmitting ? 'Submitting…' : 'Submit report'}
+        {isSubmitting ? '⏳ Submitting…' : '🚨 Submit Incident Report'}
       </button>
     </form>
   );

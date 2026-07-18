@@ -105,10 +105,118 @@ function summarizeContextForPrompt(context: StadiumContext): string {
 }
 
 /**
+ * Generates a rich, data-driven situational report from the live context
+ * without calling any external AI API. Used as the automatic fallback when
+ * Gemini is unavailable (quota, network, etc.) so the Copilot always shows
+ * a meaningful, accurate briefing rather than an error message.
+ */
+function generateTemplateReport(
+  context: StadiumContext,
+  operatorQuestion?: string,
+): string {
+  const healthScore = computeStadiumHealthScore(context);
+  const criticalZones = context.crowd.snapshot.zones.filter((z) => z.level === 'critical');
+  const highZones = context.crowd.snapshot.zones.filter((z) => z.level === 'high');
+  const normalZones = context.crowd.snapshot.zones.filter((z) => z.level === 'normal' || z.level === 'low');
+  const atRisk = context.crowd.forecasts.filter((f) => f.willBecomeCriticalAt);
+  const criticalIncidents = context.incidents.filter((i) => i.severity === 'critical');
+  const highIncidents = context.incidents.filter((i) => i.severity === 'high');
+  const availableVols = context.volunteers.pool.filter((v) => v.status === 'available').length;
+  const assignedVols = context.volunteers.pool.filter((v) => v.status === 'assigned').length;
+
+  // ── Crowd status sentence ──────────────────────────────────────────────
+  let crowdSentence: string;
+  if (criticalZones.length > 0) {
+    crowdSentence = `${criticalZones.map((z) => z.zoneName).join(' and ')} ${
+      criticalZones.length > 1 ? 'are' : 'is'
+    } at critical density (${criticalZones.map((z) => `${z.occupancyPercent}%`).join(', ')}) and require immediate intervention`;
+  } else if (highZones.length > 0) {
+    crowdSentence = `${highZones.map((z) => z.zoneName).join(' and ')} ${
+      highZones.length > 1 ? 'are' : 'is'
+    } running at elevated density (${highZones.map((z) => `${z.occupancyPercent}%`).join(', ')}) and warrant close monitoring`;
+  } else {
+    const pcts = normalZones.map((z) => `${z.zoneName} at ${z.occupancyPercent}%`).join(', ');
+    crowdSentence = `All ${context.crowd.snapshot.zones.length} zones are within normal parameters — ${pcts}`;
+  }
+
+  // ── Forecast sentence ──────────────────────────────────────────────────
+  const forecastSentence = atRisk.length > 0
+    ? `Predictive models flag ${
+        atRisk.map((f) => `${f.zoneName} in ~${f.willBecomeCriticalAt?.minutesFromNow} min`).join(' and ')
+      } as approaching critical thresholds — proactive crowd redirection is recommended before saturation occurs.`
+    : 'No zones are projected to reach critical density in the next 60 minutes based on current flow trends.';
+
+  // ── Incident sentence ──────────────────────────────────────────────────
+  let incidentSentence: string;
+  if (context.incidents.length === 0) {
+    incidentSentence = 'No active incidents are on record.';
+  } else if (criticalIncidents.length > 0) {
+    incidentSentence = `${context.incidents.length} active incident${
+      context.incidents.length > 1 ? 's' : ''
+    } including ${criticalIncidents.length} critical (${criticalIncidents.map((i) => i.zone).join(', ')}) — emergency protocol should remain on standby.`;
+  } else {
+    incidentSentence = `${context.incidents.length} active incident${
+      context.incidents.length > 1 ? 's' : ''
+    } (${highIncidents.length} high severity) are being managed across the venue.`;
+  }
+
+  // ── Utilities sentence ─────────────────────────────────────────────────
+  const { powerKw, waterLitersPerMin, wastePercentFull } = context.utilities.reading;
+  let utilitySentence: string;
+  if (context.utilities.status === 'normal') {
+    utilitySentence = `Venue utilities are stable: ${powerKw} kW power draw, ${waterLitersPerMin} L/min water consumption, waste bins at ${wastePercentFull}% capacity.`;
+  } else if (context.utilities.status === 'elevated') {
+    utilitySentence = `Utility readings are elevated — power at ${powerKw} kW and waste at ${wastePercentFull}% — facilities team should review within the hour.`;
+  } else {
+    utilitySentence = `Utilities require immediate action: power at ${powerKw} kW, waste capacity at ${wastePercentFull}% — escalate to the facilities team now.`;
+  }
+
+  // ── Volunteer sentence ─────────────────────────────────────────────────
+  const volunteerSentence = context.volunteers.plan.length > 0
+    ? `Volunteer copilot has deployed ${assignedVols} staff across ${
+        context.volunteers.plan.map((p) => p.zoneName).join(' and ')
+      }, with ${availableVols} personnel held in reserve.`
+    : `${availableVols} volunteers are on standby — no urgent redeployment required at this time.`;
+
+  // ── Top recommendation ─────────────────────────────────────────────────
+  let recommendation: string;
+  if (criticalZones.length > 0) {
+    recommendation = `PRIORITY ACTION: Deploy additional personnel to ${criticalZones[0].zoneName} and activate crowd-flow diversion to adjacent gates immediately.`;
+  } else if (atRisk.length > 0) {
+    recommendation = `PRIORITY ACTION: Pre-position volunteers near ${atRisk[0].zoneName} to stay ahead of the projected density spike in ~${atRisk[0].willBecomeCriticalAt?.minutesFromNow} minutes.`;
+  } else if (criticalIncidents.length > 0) {
+    recommendation = `PRIORITY ACTION: Ensure emergency response teams are staged near ${criticalIncidents[0].zone} until the critical incident is resolved.`;
+  } else if (context.utilities.status === 'action-needed') {
+    recommendation = `PRIORITY ACTION: Escalate the utility situation to the facilities manager for immediate on-site inspection.`;
+  } else {
+    recommendation = `Stadium Health Score is ${healthScore}/100 — maintain current posture and continue monitoring all zones at standard 5-minute intervals.`;
+  }
+
+  // ── Assemble final report ──────────────────────────────────────────────
+  // If there was a specific operator question, prepend a note acknowledging it
+  const prefix = operatorQuestion
+    ? `Regarding "${operatorQuestion.slice(0, 80)}${operatorQuestion.length > 80 ? '…' : ''}": `
+    : '';
+
+  return [
+    `${prefix}${crowdSentence}.`,
+    forecastSentence,
+    incidentSentence,
+    utilitySentence,
+    volunteerSentence,
+    recommendation,
+  ].join(' ');
+}
+
+/**
  * The Operations Copilot's headline feature: answer a free-text operator
  * question (or, absent one, produce a general shift report) grounded
  * strictly in the gathered context above — what's happening, why, what's
  * next, and what to do about it.
+ *
+ * Tries Gemini first for a natural-language response; silently falls back to
+ * the deterministic template report if the model is unavailable so the
+ * Copilot is always functional regardless of API quota or billing status.
  */
 export async function synthesizeSituationReport(
   context: StadiumContext,
@@ -128,5 +236,11 @@ export async function synthesizeSituationReport(
     operatorQuestion?.trim() ||
     'Give me the current shift briefing: overall situation, key risks in the next hour, and top recommended action.';
 
-  return askGemini({ systemInstruction, userContent, maxOutputTokens: 350 });
+  try {
+    return await askGemini({ systemInstruction, userContent, maxOutputTokens: 350 });
+  } catch {
+    // Gemini unavailable (quota, network, etc.) — fall back to the
+    // deterministic template so the Copilot always returns a useful report.
+    return generateTemplateReport(context, operatorQuestion);
+  }
 }

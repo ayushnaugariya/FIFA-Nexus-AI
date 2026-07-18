@@ -6,7 +6,6 @@ import { copilotRequestSchema, safeParseBody } from '@/lib/validation';
 import { checkRateLimit, clientKeyFromHeaders } from '@/lib/rateLimiter';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import { GeminiError } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 
@@ -40,15 +39,11 @@ export async function POST(request: NextRequest) {
   const context = gatherStadiumContext(stadium);
   const healthScore = computeStadiumHealthScore(context);
 
-  let report = 'All systems normal. No significant risks detected in the next hour.';
-  try {
-    report = await synthesizeSituationReport(context, parsed.data.operatorQuestion);
-  } catch (error) {
-    logger.warn('copilot_report_fallback', { error: String(error) });
-    if (error instanceof GeminiError) {
-      report = 'The AI synthesis is temporarily unavailable — showing raw agent data below.';
-    }
-  }
+  // synthesizeSituationReport always returns a meaningful report — it tries
+  // Gemini first and silently falls back to a data-driven template if the
+  // model is unavailable, so no error handling is needed here.
+  const report = await synthesizeSituationReport(context, parsed.data.operatorQuestion);
+  logger.info('copilot_report_generated', { stadiumId: stadium.id, length: report.length });
 
   return NextResponse.json({ context, healthScore, report });
 }

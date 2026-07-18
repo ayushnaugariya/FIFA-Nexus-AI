@@ -19,12 +19,17 @@
  * `'unsafe-inline'` on script-src is kept, deliberately, for that reason.
  */
 export function buildContentSecurityPolicy(): string {
+  const isDev = process.env.NODE_ENV === 'development';
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    "connect-src 'self'",
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+    // Google Fonts CSS (style sheet) + font files
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    // Allow same-origin images and data URIs (for vision uploader previews)
+    "img-src 'self' data: blob:",
+    // Same-origin fetches + EventSource; also allow ws:// for Next.js HMR in dev
+    "connect-src 'self' ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

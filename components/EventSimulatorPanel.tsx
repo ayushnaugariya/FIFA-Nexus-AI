@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { LoadingSpinner } from './LoadingSpinner';
 
 const EVENTS = [
-  { value: 'goal_scored', label: 'Goal scored' },
-  { value: 'halftime', label: 'Halftime' },
-  { value: 'final_whistle', label: 'Final whistle' },
+  { value: 'goal_scored', label: 'Goal Scored', icon: '⚽', desc: 'Surge in concessions & exits' },
+  { value: 'halftime', label: 'Halftime', icon: '🔔', desc: 'Major crowd movement wave' },
+  { value: 'final_whistle', label: 'Final Whistle', icon: '🏁', desc: 'Mass exit simulation' },
 ] as const;
 
 interface ZoneImpact {
@@ -54,70 +53,109 @@ export function EventSimulatorPanel({ stadiumId }: { stadiumId: string }) {
   }
 
   return (
-    <div>
-      <p className="mb-3 text-sm text-mist">
-        Simulate a match event and see how the Crowd Intelligence and Volunteer agents predict and respond —
-        before it happens.
-      </p>
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-4">
+      {/* Event buttons */}
+      <div className="grid grid-cols-3 gap-3">
         {EVENTS.map((event) => (
           <button
             key={event.value}
             type="button"
             onClick={() => trigger(event.value)}
             disabled={isLoading !== null}
-            className="rounded-card border border-floodlight px-3 py-2 text-sm font-semibold text-floodlight disabled:opacity-50"
+            className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center text-xs font-semibold transition-all disabled:opacity-50 ${
+              isLoading === event.value
+                ? 'border-floodlight bg-floodlight/20 text-floodlight'
+                : 'border-white/15 bg-white/[0.04] text-mist hover:border-floodlight/40 hover:bg-floodlight/10 hover:text-floodlight'
+            }`}
           >
-            {isLoading === event.value ? <LoadingSpinner label="Simulating…" /> : `Simulate: ${event.label}`}
+            <span className="text-2xl">{event.icon}</span>
+            <span className="text-chalk">{event.label}</span>
+            <span className="text-[10px] text-mist font-normal">{event.desc}</span>
+            {isLoading === event.value && (
+              <span className="mt-1 flex gap-1">
+                <span className="h-1 w-1 rounded-full bg-floodlight animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="h-1 w-1 rounded-full bg-floodlight animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="h-1 w-1 rounded-full bg-floodlight animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {error && (
-        <p role="alert" className="mt-3 text-sm text-clay">
-          {error}
-        </p>
+        <div role="alert" className="rounded-xl border border-clay/30 bg-clay/10 p-3 text-sm text-clay">
+          ⚠️ {error}
+        </div>
       )}
 
       {result && (
-        <div className="mt-4 space-y-3" aria-live="polite">
-          <p role="status" className="rounded-card border border-turf/40 bg-turf/10 p-3 text-sm text-chalk">
-            📣 {result.announcement}
-          </p>
+        <div className="animate-fade-in space-y-4" aria-live="polite">
+          {/* Announcement */}
+          <div className="rounded-xl border border-turf/30 bg-turf/10 p-4 text-sm text-chalk leading-relaxed">
+            <p className="mb-1 text-xs font-bold uppercase tracking-widest text-turf">📣 Broadcast</p>
+            {result.announcement}
+          </div>
 
-          <table className="w-full border-collapse text-sm">
-            <caption className="mb-1 text-left text-mist">Projected zone impact</caption>
-            <thead>
-              <tr className="border-b border-white/10 text-left text-mist">
-                <th scope="col" className="py-1">Zone</th>
-                <th scope="col" className="py-1">Now</th>
-                <th scope="col" className="py-1">Projected</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.impact.zoneImpacts.map((z) => (
-                <tr key={z.zoneId} className="border-b border-white/5">
-                  <th scope="row" className="py-1 font-normal text-chalk">{z.zoneName}</th>
-                  <td className="py-1">{z.currentOccupancyPercent}%</td>
-                  <td className={`py-1 ${z.projectedOccupancyPercent >= 95 ? 'text-clay' : z.projectedOccupancyPercent >= 80 ? 'text-floodlight' : 'text-chalk'}`}>
-                    {z.projectedOccupancyPercent}%
-                  </td>
+          {/* Zone impact table */}
+          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+            <table className="w-full border-collapse text-sm">
+              <caption className="sr-only">Projected zone impact from the simulated event</caption>
+              <thead>
+                <tr className="border-b border-white/[0.06]">
+                  <th scope="col" className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-mist">Zone</th>
+                  <th scope="col" className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-mist">Now</th>
+                  <th scope="col" className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-mist">Projected</th>
+                  <th scope="col" className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-widest text-mist">Change</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.impact.zoneImpacts.map((z) => {
+                  const delta = z.projectedOccupancyPercent - z.currentOccupancyPercent;
+                  const isCritical = z.projectedOccupancyPercent >= 95;
+                  const isHigh = z.projectedOccupancyPercent >= 80;
+                  return (
+                    <tr key={z.zoneId} className="table-row-hover border-b border-white/[0.04]">
+                      <th scope="row" className="px-4 py-3 font-medium text-chalk text-left">{z.zoneName}</th>
+                      <td className="px-4 py-3 text-mist">{z.currentOccupancyPercent}%</td>
+                      <td className={`px-4 py-3 font-bold ${isCritical ? 'text-clay' : isHigh ? 'text-floodlight' : 'text-chalk'}`}>
+                        {z.projectedOccupancyPercent}%
+                      </td>
+                      <td className={`px-4 py-3 text-xs font-medium ${delta > 0 ? 'text-clay' : 'text-turf'}`}>
+                        {delta > 0 ? '▲' : '▼'} {Math.abs(delta)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-          <ul className="list-inside list-disc space-y-1 text-sm text-chalk">
-            {result.impact.recommendedActions.map((action) => (
-              <li key={action}>{action}</li>
-            ))}
-          </ul>
+          {/* Actions */}
+          <div className="rounded-xl border border-floodlight/20 bg-floodlight/8 p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-floodlight">
+              🤖 Recommended Actions ({result.impact.recommendedVolunteers} volunteers)
+            </p>
+            <ul className="space-y-1.5">
+              {result.impact.recommendedActions.map((action) => (
+                <li key={action} className="flex items-start gap-2 text-sm text-chalk">
+                  <span className="mt-0.5 text-floodlight">→</span> {action}
+                </li>
+              ))}
+            </ul>
+          </div>
 
           {result.impact.expectedWaitTimeReductionPercent > 0 && (
-            <p className="text-sm text-turf">
-              Expected impact if actions are taken: ~{result.impact.expectedWaitTimeReductionPercent}% less wait time,
-              ~{result.impact.expectedCongestionReductionPercent}% less congestion.
-            </p>
+            <div className="flex gap-4 rounded-xl border border-turf/20 bg-turf/8 p-4 text-sm">
+              <div className="text-center">
+                <p className="font-display text-xl font-bold text-turf">{result.impact.expectedWaitTimeReductionPercent}%</p>
+                <p className="text-xs text-mist">less wait time</p>
+              </div>
+              <div className="h-full w-px bg-white/10" />
+              <div className="text-center">
+                <p className="font-display text-xl font-bold text-turf">{result.impact.expectedCongestionReductionPercent}%</p>
+                <p className="text-xs text-mist">less congestion</p>
+              </div>
+            </div>
           )}
         </div>
       )}

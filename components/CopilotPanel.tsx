@@ -35,19 +35,27 @@ export function CopilotPanel({ stadiumId }: { stadiumId: string }) {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between gap-4">
-        {result ? <HealthScoreGauge score={result.healthScore} /> : <p className="text-sm text-mist">Ask a question or request a briefing to see the live health score.</p>}
+    <div className="space-y-4">
+      {/* Health score + briefing button row */}
+      <div className="flex items-center justify-between gap-4">
+        {result ? (
+          <HealthScoreGauge score={result.healthScore} />
+        ) : (
+          <p className="text-sm text-mist">
+            Ask a question or request a briefing to see the live health score.
+          </p>
+        )}
         <button
           type="button"
           onClick={() => ask(undefined)}
           disabled={isLoading}
-          className="whitespace-nowrap rounded-card bg-floodlight px-3 py-2 text-sm font-semibold text-pitchnight disabled:opacity-50"
+          className="btn-glow whitespace-nowrap rounded-xl bg-floodlight px-4 py-2.5 text-sm font-semibold text-pitchnight disabled:opacity-50 transition-all"
         >
-          Get shift briefing
+          {isLoading ? '⏳ Thinking…' : '📋 Get shift briefing'}
         </button>
       </div>
 
+      {/* Question input */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -64,24 +72,40 @@ export function CopilotPanel({ stadiumId }: { stadiumId: string }) {
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="e.g. What are the biggest risks in the next 30 minutes?"
           maxLength={500}
-          className="flex-1 rounded-card border border-white/20 bg-pitchnight px-3 py-2 text-sm text-chalk placeholder:text-mist"
+          className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-chalk placeholder:text-mist focus:border-floodlight/40 focus:outline-none transition-colors"
         />
         <button
           type="submit"
           disabled={isLoading || !question.trim()}
-          className="rounded-card border border-floodlight px-4 py-2 text-sm font-semibold text-floodlight disabled:opacity-50"
+          className="rounded-xl border border-floodlight/40 bg-floodlight/10 px-5 py-2.5 text-sm font-semibold text-floodlight hover:bg-floodlight hover:text-pitchnight disabled:opacity-40 transition-all"
         >
-          Ask Nexus
+          Ask
         </button>
       </form>
 
-      <div className="mt-4" aria-live="polite">
-        {isLoading && <LoadingSpinner label="Synthesizing across agents…" />}
-        {error && <p role="alert" className="text-sm text-clay">{error}</p>}
+      {/* Result */}
+      <div aria-live="polite" className="space-y-3">
+        {isLoading && (
+          <div className="flex items-center gap-3 rounded-xl border border-floodlight/20 bg-floodlight/5 p-4">
+            <LoadingSpinner label="" />
+            <span className="text-sm text-mist">Synthesizing across all agents…</span>
+          </div>
+        )}
+        {error && (
+          <div className="rounded-xl border border-clay/30 bg-clay/10 p-4 text-sm text-clay" role="alert">
+            ⚠️ {error}
+          </div>
+        )}
         {result && !isLoading && (
-          <p role="status" className="rounded-card border border-floodlight/30 bg-floodlight/10 p-4 text-sm text-chalk">
+          <div
+            role="status"
+            className="animate-fade-in rounded-xl border border-floodlight/20 bg-gradient-to-br from-floodlight/8 to-transparent p-5 text-sm text-chalk leading-relaxed"
+          >
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-floodlight">
+              AI Situational Report
+            </p>
             {result.report}
-          </p>
+          </div>
         )}
       </div>
     </div>
