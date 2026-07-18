@@ -1,6 +1,6 @@
-import type { ZoneSnapshot } from '@/lib/crowdSim';
+import type { CrowdLevel, ZoneSnapshot } from '@/lib/crowdSim';
 
-const LEVEL_CONFIG: Record<string, { bg: string; text: string; badge: string; bar: string }> = {
+const LEVEL_CONFIG: Record<CrowdLevel, { bg: string; text: string; badge: string; bar: string }> = {
   low: { bg: 'rgba(27,138,90,0.15)', text: '#1B8A5A', badge: 'bg-turf/15 text-turf border-turf/30', bar: 'bg-turf' },
   moderate: { bg: 'rgba(255,182,39,0.15)', text: '#FFB627', badge: 'bg-floodlight/15 text-floodlight border-floodlight/30', bar: 'bg-floodlight' },
   high: { bg: 'rgba(242,166,90,0.20)', text: '#f2a65a', badge: 'bg-orange-400/15 text-orange-400 border-orange-400/30', bar: 'bg-orange-400' },

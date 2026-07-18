@@ -117,7 +117,7 @@ function generateTemplateReport(
   const healthScore = computeStadiumHealthScore(context);
   const criticalZones = context.crowd.snapshot.zones.filter((z) => z.level === 'critical');
   const highZones = context.crowd.snapshot.zones.filter((z) => z.level === 'high');
-  const normalZones = context.crowd.snapshot.zones.filter((z) => z.level === 'normal' || z.level === 'low');
+  const normalZones = context.crowd.snapshot.zones.filter((z) => z.level === 'moderate' || z.level === 'low');
   const atRisk = context.crowd.forecasts.filter((f) => f.willBecomeCriticalAt);
   const criticalIncidents = context.incidents.filter((i) => i.severity === 'critical');
   const highIncidents = context.incidents.filter((i) => i.severity === 'high');
@@ -181,11 +181,11 @@ function generateTemplateReport(
   // ── Top recommendation ─────────────────────────────────────────────────
   let recommendation: string;
   if (criticalZones.length > 0) {
-    recommendation = `PRIORITY ACTION: Deploy additional personnel to ${criticalZones[0].zoneName} and activate crowd-flow diversion to adjacent gates immediately.`;
+    recommendation = `PRIORITY ACTION: Deploy additional personnel to ${criticalZones[0]?.zoneName ?? 'critical zone'} and activate crowd-flow diversion to adjacent gates immediately.`;
   } else if (atRisk.length > 0) {
-    recommendation = `PRIORITY ACTION: Pre-position volunteers near ${atRisk[0].zoneName} to stay ahead of the projected density spike in ~${atRisk[0].willBecomeCriticalAt?.minutesFromNow} minutes.`;
+    recommendation = `PRIORITY ACTION: Pre-position volunteers near ${atRisk[0]?.zoneName ?? 'at-risk zone'} to stay ahead of the projected density spike in ~${atRisk[0]?.willBecomeCriticalAt?.minutesFromNow ?? 0} minutes.`;
   } else if (criticalIncidents.length > 0) {
-    recommendation = `PRIORITY ACTION: Ensure emergency response teams are staged near ${criticalIncidents[0].zone} until the critical incident is resolved.`;
+    recommendation = `PRIORITY ACTION: Ensure emergency response teams are staged near ${criticalIncidents[0]?.zone ?? 'incident zone'} until the critical incident is resolved.`;
   } else if (context.utilities.status === 'action-needed') {
     recommendation = `PRIORITY ACTION: Escalate the utility situation to the facilities manager for immediate on-site inspection.`;
   } else {

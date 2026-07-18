@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import type { Incident } from '@/lib/incidentStore';
+import type { Incident, IncidentSeverity } from '@/lib/incidentStore';
 
-const SEVERITY_CONFIG: Record<string, { color: string; icon: string; border: string }> = {
+const SEVERITY_CONFIG: Record<IncidentSeverity, { color: string; icon: string; border: string }> = {
   low: { color: 'text-turf bg-turf/10 border-turf/30', icon: '🟢', border: 'border-l-turf' },
   medium: { color: 'text-floodlight bg-floodlight/10 border-floodlight/30', icon: '🟡', border: 'border-l-floodlight' },
   high: { color: 'text-clay bg-clay/10 border-clay/30', icon: '🟠', border: 'border-l-clay' },
