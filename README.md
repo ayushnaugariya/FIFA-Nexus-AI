@@ -13,6 +13,18 @@ can ask "what's happening right now?" instead of checking five dashboards.
 
 ---
 
+## Problem Statement Alignment
+
+This project directly addresses the core challenges of the **FIFA World Cup 2026 Smart Stadiums & Tournament Operations** hackathon by leveraging a multi-agent Generative AI architecture to optimize stadium logistics, safety, and fan experience:
+
+- **Predictive Crowd Management:** The Crowd Intelligence Agent forecasts congestion bottlenecks 15–60 minutes in advance, allowing operators to proactively route fans and deploy staff before physical crowding occurs.
+- **Dynamic Resource Allocation:** The Volunteer Copilot analyzes live incidents and crowd density to dynamically reassign volunteers and stewards to high-need zones in real time.
+- **Proactive Safety & Incident Response:** The Safety Agent uses multimodal AI (vision models) to analyze hazards and intelligently triages incident reports submitted by staff, recommending immediate actionable responses.
+- **Enhanced Fan Experience:** The Fan Experience Agent acts as a personalized, multilingual concierge, breaking down language barriers and providing instant, accessible guidance for navigation and seating.
+- **Sustainable Operations:** The Sustainability Agent computes real-time carbon footprints for fan transit and monitors venue utilities, aligning with FIFA's green initiatives.
+
+---
+
 ## 1. Why a rewrite, and what's real vs. roadmap
 
 An earlier draft of this project ("StadiumPulse AI") shipped single-purpose GenAI

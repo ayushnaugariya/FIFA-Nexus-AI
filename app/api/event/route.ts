@@ -7,12 +7,17 @@ import { simulateMatchEvent } from '@/lib/eventSimulator';
 import { askGemini } from '@/lib/gemini';
 import { eventRequestSchema, safeParseBody } from '@/lib/validation';
 import { checkRateLimit, clientKeyFromHeaders } from '@/lib/rateLimiter';
+import { isOperatorRequestAuthorized } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  if (!isOperatorRequestAuthorized(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+  }
+
   const clientKey = clientKeyFromHeaders(request.headers);
   const rateLimit = checkRateLimit(`event:${clientKey}`, env.rateLimitPerMinute);
   if (!rateLimit.allowed) {

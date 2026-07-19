@@ -36,6 +36,16 @@ export interface CrowdAgentState {
   forecasts: ZoneForecast[];
 }
 
+/**
+ * Core engine for the Crowd Agent. It reads the current zone states using
+ * the provided reader function (which either advances the simulation or just
+ * peeks at it), classifies current crowd levels, generates time-series
+ * forecasts for future congestion, and computes actionable recommendations
+ * (e.g. dynamic signage updates or volunteer reallocations).
+ * 
+ * @param stadium The stadium configuration containing zone definitions.
+ * @param reader Function to fetch the current and historical occupancy for a zone.
+ */
 function buildLiveCrowdAgentState(
   stadium: Stadium,
   reader: (stadiumId: string, zoneId: string) => AdvancedZoneState,

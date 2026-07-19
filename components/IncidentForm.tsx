@@ -83,13 +83,14 @@ export function IncidentForm({
       </div>
 
       {/* Role */}
-      <div>
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-mist">👤 Your Role</p>
+      <div role="group" aria-labelledby="role-label">
+        <p id="role-label" className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-mist">👤 Your Role</p>
         <div className="flex flex-wrap gap-2">
           {ROLES.map((r) => (
             <button
               key={r}
               type="button"
+              aria-pressed={role === r}
               onClick={() => setRole(r)}
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
                 role === r

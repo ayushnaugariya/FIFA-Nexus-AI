@@ -91,6 +91,9 @@ export function TransportPlanner({ stadiumId }: { stadiumId: string }) {
       {/* Mobility toggle */}
       <button
         type="button"
+        role="switch"
+        aria-checked={mobilityNeeds}
+        aria-label="Step-free / accessible transport"
         onClick={() => setMobilityNeeds(!mobilityNeeds)}
         className={`flex w-full items-center gap-3 rounded-xl border p-4 text-sm transition-all ${
           mobilityNeeds
